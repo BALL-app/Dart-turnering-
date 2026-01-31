@@ -1,23 +1,33 @@
-// online.js – MINIMALT TEST (INGA SYNTAXFEL)
+// online.js – TEST 2: bevisa att klicket når online.js
 
 alert("ONLINE.JS LADDAD – INGA SYNTAXFEL");
 
-function initOnline() {
-  console.log("initOnline körs");
+function wireTestButtons() {
+  const createBtn = document.getElementById("btnCreateOnline");
+  const joinBtn = document.getElementById("btnJoinOnline");
 
-  const FB = window.__FIREBASE;
-
-  if (!FB || !FB.enabled) {
-    console.warn("Firebase inte aktivt – online-funktioner inaktiva");
-    return;
+  if (createBtn) {
+    createBtn.addEventListener("click", () => {
+      alert("KLICK NÅDDE ONLINE.JS (Skapa)");
+      // Kör stubben i index.html om den finns
+      if (typeof window.createOnlineTournamentStub === "function") {
+        window.createOnlineTournamentStub();
+      } else {
+        alert("Hittar inte createOnlineTournamentStub() i index.html");
+      }
+    });
   }
 
-  console.log("Firebase finns – redo för nästa steg");
+  if (joinBtn) {
+    joinBtn.addEventListener("click", () => {
+      alert("KLICK NÅDDE ONLINE.JS (Anslut)");
+      if (typeof window.openJoinOnlineOverlay === "function") {
+        window.openJoinOnlineOverlay();
+      } else {
+        alert("Hittar inte openJoinOnlineOverlay() i index.html");
+      }
+    });
+  }
 }
 
-try {
-  initOnline();
-} catch (e) {
-  alert("JS-FEL i initOnline: " + e.message);
-  console.error(e);
-}
+document.addEventListener("DOMContentLoaded", wireTestButtons);
