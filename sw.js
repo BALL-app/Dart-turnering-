@@ -1,84 +1,77 @@
-/* Dart-turnering PWA service worker (v60)
-   - Network-first för HTML (så du får uppdateringar)
-   - Cache-first för övrigt (snabbt + offline)
+/* Dart-turnering PWA service worker (stable)
+   - Network-first för HTML (uppdateringar)
+   - Cache-first för övrigt
+   - Stabil fallback för index.html
 */
-const CACHE_NAME = "dart-turnering-v76";
+
+const BUILD = "v77";                 // <-- bumpa vid deploy
+const CACHE_NAME = `dart-turnering-${BUILD}`;
+
+// Rekommendation under aktiv utveckling:
+// Precacha INTE index.html och INTE online.js,
+// så slipper ni “fastnade” varianter.
+// Lägg bara stabila assets här.
 const CORE_ASSETS = [
   "./",
-  "./index.html",
-  "./manifest.webmanifest",
-  "./sw.js",
-  "./online.js"
+  "./manifest.webmanifest"
 ];
 
-// Install: cacha kärnfiler
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
-  self.skipWaiting();
 });
 
-// Activate: städa gamla cache
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => (k === CACHE_NAME ? null : caches.delete(k))));
+    await self.clients.claim();
+  })());
 });
 
-function isHTML(request) {
-  return request.mode === "navigate" ||
-    (request.headers.get("accept") || "").includes("text/html");
+function isHTML(req) {
+  return req.mode === "navigate" ||
+    (req.headers.get("accept") || "").includes("text/html");
 }
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  // Låt Firebase/CDN och API-anrop gå direkt till nätet (undvik cache-strul)
-  try{
-    const url = new URL(req.url);
-    const host = url.hostname || "";
-    const isFirebase = host.includes("firebaseapp.com") || host.includes("googleapis.com") || host.includes("gstatic.com") || host.includes("firebaseio.com");
-    const isCrossOrigin = url.origin !== self.location.origin;
-    if(isCrossOrigin || isFirebase){
-      event.respondWith(fetch(req));
-      return;
-    }
-  }catch(e){}
+  const url = new URL(req.url);
 
-
-  // Network-first för HTML (så nya index.html slår igenom)
-  if (isHTML(req)) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(()=>{});
-          return res;
-        })
-        .catch(() =>
-          caches.match(req).then((cached) => cached || caches.match("./index.html"))
-        )
-    );
+  // Cross-origin (Firebase/CDN etc) -> alltid nätet
+  if (url.origin !== self.location.origin) {
+    event.respondWith(fetch(req));
     return;
   }
 
-  // Cache-first för allt annat
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          // Bara cacha "OK"-svar
-          if (res && res.status === 200) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(()=>{});
-          }
-          return res;
-        })
-        .catch(() => cached);
-    })
-  );
+  // HTML: network-first men cachea alltid under samma nyckel
+  if (isHTML(req)) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put("./index.html", res.clone());
+        return res;
+      } catch (e) {
+        const cached = await caches.match("./index.html");
+        return cached || new Response("Offline", { status: 503 });
+      }
+    })());
+    return;
+  }
+
+  // Övrigt: cache-first (utan ignoreSearch)
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    if (cached) return cached;
+
+    const res = await fetch(req);
+    if (res && res.status === 200) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(req, res.clone());
+    }
+    return res;
+  })());
 });
