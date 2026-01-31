@@ -1,8 +1,10 @@
-/* Dart-turnering PWA service worker (v40)
+/* Dart-turnering PWA service worker (v41)
    - Network-first för HTML (så du får uppdateringar)
    - Cache-first för övrigt (snabbt + offline)
 */
-const CACHE_NAME = "dart-turnering-v40";
+
+const CACHE_NAME = "dart-turnering-v41";
+
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -22,15 +24,19 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+      Promise.all(
+        keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null))
+      )
     )
   );
   self.clients.claim();
 });
 
 function isHTML(request) {
-  return request.mode === "navigate" ||
-    (request.headers.get("accept") || "").includes("text/html");
+  return (
+    request.mode === "navigate" ||
+    (request.headers.get("accept") || "").includes("text/html")
+  );
 }
 
 self.addEventListener("fetch", (event) => {
@@ -42,11 +48,17 @@ self.addEventListener("fetch", (event) => {
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(()=>{});
+          // Se till att app-shell alltid uppdateras
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => cache.put("./index.html", copy))
+            .catch(() => {});
           return res;
         })
         .catch(() =>
-          caches.match(req).then((cached) => cached || caches.match("./index.html"))
+          caches
+            .match("./index.html")
+            .then((cached) => cached || caches.match(req))
         )
     );
     return;
@@ -61,7 +73,10 @@ self.addEventListener("fetch", (event) => {
           // Bara cacha "OK"-svar
           if (res && res.status === 200) {
             const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(()=>{});
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(req, copy))
+              .catch(() => {});
           }
           return res;
         })
